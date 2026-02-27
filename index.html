@@ -3,324 +3,197 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>⚡ 高速QRスキャナー</title>
-    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+    <title>QR Scanner</title>
+    <!-- jsQRライブラリの読み込み -->
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
+            font-family: sans-serif;
             text-align: center;
-        }
-        
-        .container {
-            max-width: 600px;
-            margin: 0 auto;
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 16px;
-            padding: 30px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-        }
-        
-        h1 {
-            color: #333;
-            margin-bottom: 30px;
-            font-size: 28px;
-        }
-        
-        #canvas {
-            width: 100%;
-            max-width: 480px;
-            border-radius: 12px;
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-            background: #000;
-            display: none;
-        }
-        
-        #loadingMessage {
-            padding: 30px;
-            background: linear-gradient(45deg, #e3f2fd, #bbdefb);
-            color: #1976d2;
-            border-radius: 12px;
-            font-size: 18px;
-            font-weight: 500;
-        }
-        
-        .result-box {
-            margin-top: 20px;
+            background-color: #f4f4f9;
+            margin: 0;
             padding: 20px;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-            display: none;
         }
-        
-        .success {
-            background: linear-gradient(45deg, #e8f5e9, #c8e6c9);
-            color: #2e7d32;
-            font-weight: bold;
-            animation: pulse 1s ease-in-out;
-        }
-        
-        .error {
-            background: linear-gradient(45deg, #ffebee, #ffcdd2);
-            color: #d32f2f;
-        }
-        
-        @keyframes pulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.02); }
-        }
-        
-        .qr-data {
-            background: #f5f5f5;
-            padding: 15px;
+        #video-container {
+            position: relative;
+            width: 100%;
+            max-width: 400px;
+            margin: 0 auto;
+            border: 2px solid #ccc;
             border-radius: 8px;
-            margin-top: 15px;
-            font-family: monospace;
-            font-size: 14px;
-            word-break: break-all;
-            border-left: 4px solid #4CAF50;
+            overflow: hidden;
+            background-color: #000;
+            display: none; /* 初期状態は非表示 */
         }
-        
-        button {
-            background: linear-gradient(45deg, #4285f4, #34a853);
-            color: white;
-            border: none;
-            padding: 14px 28px;
-            border-radius: 50px;
+        video {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        canvas {
+            display: none; /* 解析用のキャンバスは隠しておく */
+        }
+        .btn {
+            padding: 12px 24px;
             font-size: 16px;
-            font-weight: 500;
+            margin: 10px 5px;
             cursor: pointer;
-            margin-top: 20px;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(66, 133, 244, 0.3);
+            border: none;
+            border-radius: 4px;
+            background-color: #007bff;
+            color: #fff;
+            transition: background-color 0.3s;
         }
-        
-        button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(66, 133, 244, 0.4);
+        .btn:hover {
+            background-color: #0056b3;
         }
-        
-        .scan-counter {
-            font-size: 14px;
-            color: #666;
-            margin-top: 10px;
+        .btn:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        #status-message {
+            margin: 20px 0;
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+            min-height: 24px;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>⚡ 高速QRスキャナー</h1>
-        
-        <div id="loadingMessage">🎥 カメラを起動しています...</div>
-        <canvas id="canvas"></canvas>
-        
-        <div id="resultBox" class="result-box">
-            <div id="resultMessage">QRコードをカメラに向けてください</div>
-            <div id="resultData"></div>
-        </div>
-        
-        <div class="scan-counter">スキャン回数: <span id="scanCount">0</span></div>
-        
-        <button id="resetBtn" style="display:none;" onclick="resetScan()">
-            次のQRをスキャン
-        </button>
+
+    <h1>QR Scanner</h1>
+    
+    <div id="status-message">「カメラを起動」ボタンを押してください</div>
+
+    <div id="video-container">
+        <!-- playsinlineはiOS Safariでの全画面化を防ぐために必須です -->
+        <video id="qr-video" playsinline></video>
+    </div>
+    
+    <!-- 画像データを抽出するためのキャンバス -->
+    <canvas id="qr-canvas"></canvas>
+
+    <div>
+        <button id="start-btn" class="btn" onclick="startCamera()">カメラを起動</button>
+        <button id="rescan-btn" class="btn" style="display:none;" onclick="startCamera()">再度スキャンする</button>
     </div>
 
     <script>
-        // ===============================================
-        // ★ここにGASのWebアプリURLを設定してください
-        const GAS_API_URL = 'https://script.google.com/macros/s/AKfycbyd_Q4YhhXuGBeJ1djaSewGt8sa-portaUJCqXZLLth_dY6CW3z2QqYDjC_Z_E0OZen/exec';
-        // ===============================================
+        // GASのWebアプリURLをここに設定します
+        const GAS_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbyd_Q4YhhXuGBeJ1djaSewGt8sa-portaUJCqXZLLth_dY6CW3z2QqYDjC_Z_E0OZen/exec';
         
-        const video = document.createElement("video");
-        const canvasElement = document.getElementById("canvas");
-        const canvas = canvasElement.getContext("2d");
-        const loadingMessage = document.getElementById("loadingMessage");
-        const resultBox = document.getElementById("resultBox");
-        const resultMessage = document.getElementById("resultMessage");
-        const resultData = document.getElementById("resultData");
-        const resetBtn = document.getElementById("resetBtn");
-        const scanCountElement = document.getElementById("scanCount");
-        
-        let isScanning = true;
-        let scanCount = 0;
-        let lastScannedData = null;
-        let lastScanTime = 0;
-        
-        // カメラ起動
-        navigator.mediaDevices.getUserMedia({ 
-            video: { 
-                facingMode: "environment",  // 背面カメラ優先
-                width: { ideal: 1280 },
-                height: { ideal: 720 }
-            } 
-        }).then(function(stream) {
-            video.srcObject = stream;
-            video.setAttribute("playsinline", true);
-            video.play();
-            requestAnimationFrame(scanLoop);
-        }).catch(function(err) {
-            loadingMessage.innerHTML = `❌ カメラエラー: ${err.message}`;
-            loadingMessage.style.background = 'linear-gradient(45deg, #ffebee, #ffcdd2)';
-            loadingMessage.style.color = '#d32f2f';
-        });
-        
-        // メインスキャンループ
-        function scanLoop() {
-            if (!isScanning) return;
-            
+        let currentStream = null;
+        let requestAnimationFrameId = null;
+        const video = document.getElementById('qr-video');
+        const canvas = document.getElementById('qr-canvas');
+        const ctx = canvas.getContext('2d');
+        const statusMessage = document.getElementById('status-message');
+        const videoContainer = document.getElementById('video-container');
+        const startBtn = document.getElementById('start-btn');
+        const rescanBtn = document.getElementById('rescan-btn');
+
+        // カメラを起動する処理を行う関数です
+        async function startCamera() {
+            // UIの状態をリセットします
+            statusMessage.innerText = "カメラを起動中...";
+            startBtn.style.display = "none";
+            rescanBtn.style.display = "none";
+            videoContainer.style.display = "block";
+
+            try {
+                // 背面カメラ（アウトカメラ）を優先して要求します
+                currentStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: "environment" }
+                });
+                
+                video.srcObject = currentStream;
+                video.play();
+                
+                // 動画の再生準備が整ったらスキャンループを開始します
+                requestAnimationFrameId = requestAnimationFrame(scanQRCode);
+                statusMessage.innerText = "QRコードをカメラにかざしてください";
+            } catch (err) {
+                console.error("カメラの起動エラー:", err);
+                statusMessage.innerText = "カメラの起動に失敗しました。権限を確認してください。";
+                startBtn.style.display = "inline-block";
+                videoContainer.style.display = "none";
+            }
+        }
+
+        // カメラを完全に停止し、リソースを解放する関数です
+        function stopCamera() {
+            // アニメーションフレームのループをキャンセルします
+            if (requestAnimationFrameId) {
+                cancelAnimationFrame(requestAnimationFrameId);
+                requestAnimationFrameId = null;
+            }
+            // ストリームのトラックをすべて停止してカメラのランプを消します
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => {
+                    track.stop();
+                });
+                currentStream = null;
+            }
+            video.srcObject = null;
+            videoContainer.style.display = "none";
+        }
+
+        // ビデオフレームごとにQRコードを解析する関数です
+        function scanQRCode() {
+            // 動画の準備ができていればキャンバスに描画して解析します
             if (video.readyState === video.HAVE_ENOUGH_DATA) {
-                // 初回表示設定
-                if (loadingMessage.style.display !== 'none') {
-                    loadingMessage.style.display = 'none';
-                    canvasElement.style.display = 'block';
-                    resultBox.style.display = 'block';
-                }
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                 
-                // キャンバスサイズを動画に合わせる
-                canvasElement.height = video.videoHeight;
-                canvasElement.width = video.videoWidth;
-                canvas.drawImage(video, 0, 0, canvasElement.width, canvasElement.height);
-                
-                // QRコード解析
-                const imageData = canvas.getImageData(0, 0, canvasElement.width, canvasElement.height);
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                 const code = jsQR(imageData.data, imageData.width, imageData.height, {
                     inversionAttempts: "dontInvert",
                 });
-                
+
                 if (code) {
-                    // QRコード検出枠を描画
-                    drawDetectionFrame(code.location);
+                    // QRコードを検出した直後にカメラを停止します
+                    stopCamera();
+                    const qrText = code.data;
+                    statusMessage.innerText = `検出完了: ${qrText}\nデータ送信中...`;
                     
-                    // 重複スキャン防止（1秒以内の同じデータは無視）
-                    const now = Date.now();
-                    if (code.data !== lastScannedData || now - lastScanTime > 1000) {
-                        lastScannedData = code.data;
-                        lastScanTime = now;
-                        handleQRDetected(code.data);
-                    }
+                    // GASへの送信処理を呼び出します
+                    sendDataToGAS(qrText);
+                    return; // スキャンループを終了します
                 }
             }
-            
-            if (isScanning) {
-                requestAnimationFrame(scanLoop);
-            }
+            // 検出されなかった場合は次のフレームで再度実行します
+            requestAnimationFrameId = requestAnimationFrame(scanQRCode);
         }
-        
-        // QRコード検出枠の描画
-        function drawDetectionFrame(location) {
-            canvas.beginPath();
-            canvas.moveTo(location.topLeftCorner.x, location.topLeftCorner.y);
-            canvas.lineTo(location.topRightCorner.x, location.topRightCorner.y);
-            canvas.lineTo(location.bottomRightCorner.x, location.bottomRightCorner.y);
-            canvas.lineTo(location.bottomLeftCorner.x, location.bottomLeftCorner.y);
-            canvas.closePath();
-            canvas.lineWidth = 4;
-            canvas.strokeStyle = "#4CAF50";
-            canvas.stroke();
-        }
-        
-        // QRコード検出処理
-        async function handleQRDetected(qrData) {
-            if (!isScanning) return;
-            
-            isScanning = false; // 連続検出防止
-            scanCount++;
-            scanCountElement.textContent = scanCount;
-            
-            // 検出音（オプション）
+
+        // 検出したデータをGASに送信する関数です
+        async function sendDataToGAS(qrData) {
             try {
-                const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBTGH0fPTgjMGHm7A7+OZURE=');
-                audio.play();
-            } catch (e) {
-                // 音声再生失敗は無視
-            }
-            
-            // UI更新
-            resultMessage.textContent = `✅ QR検出 #${scanCount} - 送信中...`;
-            resultMessage.className = 'success';
-            resultData.innerHTML = `<div class="qr-data">${escapeHtml(qrData)}</div>`;
-            
-            // GASへ送信
-            try {
-                const response = await fetch(GAS_API_URL, {
+                const response = await fetch(GAS_WEBAPP_URL, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'text/plain' },
-                    body: JSON.stringify({ 
-                        qrData: qrData,
-                        timestamp: new Date().toISOString(),
-                        scanNumber: scanCount
-                    })
+                    headers: {
+                        'Content-Type': 'text/plain', // GASのCORS制約を回避するためにtext/plainを使用します
+                    },
+                    body: JSON.stringify({ qrData: qrData })
                 });
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
-                
+
                 const result = await response.json();
                 
                 if (result.success) {
-                    resultMessage.textContent = `🎉 保存完了 #${scanCount}`;
-                    resultData.innerHTML += `
-                        <div style="background: #e8f5e9; padding: 10px; margin-top: 10px; border-radius: 6px; font-size: 12px;">
-                            <strong>📝 スプレッドシート:</strong> 行 ${result.rowNumber} に記録
-                        </div>
-                    `;
-                    resetBtn.style.display = 'inline-block';
+                    statusMessage.innerText = `送信成功！\n記録データ: ${qrData}`;
                 } else {
-                    throw new Error(result.message || 'GAS側エラー');
+                    statusMessage.innerText = `エラー: ${result.message}`;
+                    console.error("GASエラー詳細:", result);
                 }
-                
             } catch (error) {
-                console.error('送信エラー:', error);
-                resultMessage.textContent = `❌ 送信エラー #${scanCount}`;
-                resultMessage.className = 'error';
-                resultData.innerHTML += `
-                    <div style="background: #ffebee; padding: 10px; margin-top: 10px; border-radius: 6px; font-size: 12px; color: #d32f2f;">
-                        <strong>エラー詳細:</strong> ${error.message}
-                    </div>
-                `;
-                // エラー時は3秒後に自動再開
-                setTimeout(() => {
-                    if (!isScanning) resetScan();
-                }, 3000);
+                console.error('通信エラー:', error);
+                statusMessage.innerText = "通信エラーが発生しました。ネットワークを確認してください。";
+            } finally {
+                // 送信処理が完了したら「再度スキャン」ボタンを表示します
+                rescanBtn.style.display = "inline-block";
             }
         }
-        
-        // HTMLエスケープ
-        function escapeHtml(text) {
-            const map = {
-                '&': '&amp;',
-                '<': '&lt;',
-                '>': '&gt;',
-                '"': '&quot;',
-                "'": '&#039;'
-            };
-            return text.replace(/[&<>"']/g, m => map[m]);
-        }
-        
-        // スキャンリセット
-        function resetScan() {
-            isScanning = true;
-            resetBtn.style.display = 'none';
-            resultMessage.textContent = 'QRコードをカメラに向けてください';
-            resultMessage.className = '';
-            resultData.innerHTML = '';
-            requestAnimationFrame(scanLoop);
-        }
-        
-        // ページ離脱時のクリーンアップ
-        window.addEventListener('beforeunload', () => {
-            isScanning = false;
-            if (video.srcObject) {
-                video.srcObject.getTracks().forEach(track => track.stop());
-            }
-        });
     </script>
 </body>
 </html>
