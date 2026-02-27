@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📷 カメラアプリ</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 30px;
+        }
+        
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 28px;
+            font-weight: 600;
+        }
+        
+        .camera-container {
+            position: relative;
+            margin-bottom: 30px;
+        }
+        
+        #video {
+            width: 100%;
+            max-width: 640px;
+            border-radius: 12px;
+            background: #000;
+            display: block;
+            margin: 0 auto;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+        }
+        
+        #canvas {
+            display: none;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-bottom: 30px;
+        }
+        
+        button {
+            background: linear-gradient(45deg, #4285f4, #34a853);
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            border-radius: 50px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(66, 133, 244, 0.3);
+            min-width: 120px;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(66, 133, 244, 0.4);
+        }
+        
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        #stopBtn {
+            background: linear-gradient(45deg, #ea4335, #fbbc04);
+            box-shadow: 0 4px 15px rgba(234, 67, 53, 0.3);
+        }
+        
+        #stopBtn:hover {
+            box-shadow: 0 6px 20px rgba(234, 67, 53, 0.4);
+        }
+        
+        .status {
+            padding: 16px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-weight: 500;
+            font-size: 16px;
+        }
+        
+        .status.info {
+            background: linear-gradient(45deg, #e3f2fd, #bbdefb);
+            color: #1976d2;
+        }
+        
+        .status.success {
+            background: linear-gradient(45deg, #e8f5e9, #c8e6c9);
+            color: #388e3c;
+        }
+        
+        .status.error {
+            background: linear-gradient(45deg, #ffebee, #ffcdd2);
+            color: #d32f2f;
+        }
+        
+        .result {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 12px;
+            margin-top: 20px;
+            word-wrap: break-word;
+            border-left: 4px solid #4285f4;
+        }
+        
+        .result h3 {
+            margin-bottom: 15px;
+            color: #333;
+            font-size: 18px;
+        }
+        
+        .preview-image {
+            max-width: 100%;
+            border-radius: 8px;
+            margin-top: 15px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+        
+        .gas-response {
+            background: #e8f5e9;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            font-family: monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            border-left: 4px solid #34a853;
+        }
+        
+        @media (max-width: 600px) {
+            .container {
+                padding: 20px;
+                margin: 10px;
+            }
+            
+            .controls {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            button {
+                width: 100%;
+                max-width: 280px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📷 カメラアプリ</h1>
+        
+        <div class="camera-container">
+            <video id="video" autoplay playsinline></video>
+            <canvas id="canvas"></canvas>
+        </div>
+        
+        <div class="controls">
+            <button id="startBtn">カメラ起動</button>
+            <button id="captureBtn" disabled>撮影・送信</button>
+            <button id="stopBtn" disabled>カメラ停止</button>
+        </div>
+        
+        <div id="status" class="status info">カメラ起動ボタンを押してください</div>
+        
+        <div id="result"></div>
+    </div>
+
+    <script>
+        // ===============================================
+        // 【重要】ここにGASのWebアプリURLを設定してください
+        const GAS_API_URL = 'https://script.google.com/macros/s/AKfycbwjCzLHoV1xiyCwDA6qE-2CIYsvJqdlb_exaSYtbrKU_o_kkFi8zKVaSBayaASbpRft/exec';
+        // ===============================================
+        
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const startBtn = document.getElementById('startBtn');
+        const captureBtn = document.getElementById('captureBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const status = document.getElementById('status');
+        const result = document.getElementById('result');
+        
+        let currentStream = null;
+        
+        // ステータス表示ヘルパー
+        function showStatus(message, type = 'info') {
+            status.textContent = message;
+            status.className = `status ${type}`;
+        }
+        
+        // カメラ起動
+        startBtn.addEventListener('click', async () => {
+            try {
+                showStatus('🎥 カメラを起動中...', 'info');
+                
+                // カメラ設定（スマホの背面カメラを優先）
+                const constraints = {
+                    video: {
+                        facingMode: 'environment', // 背面カメラ
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    },
+                    audio: false
+                };
+                
+                currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = currentStream;
+                
+                // ボタン状態の更新
+                startBtn.disabled = true;
+                captureBtn.disabled = false;
+                stopBtn.disabled = false;
+                
+                showStatus('✅ カメラ起動完了！撮影ボタンを押してください', 'success');
+                
+            } catch (err) {
+                console.error('Camera error:', err);
+                let errorMessage = '❌ カメラエラー: ';
+                
+                switch (err.name) {
+                    case 'NotAllowedError':
+                        errorMessage += 'カメラの使用が許可されていません';
+                        break;
+                    case 'NotFoundError':
+                        errorMessage += 'カメラデバイスが見つかりません';
+                        break;
+                    case 'NotReadableError':
+                        errorMessage += 'カメラが他のアプリで使用中です';
+                        break;
+                    default:
+                        errorMessage += err.message;
+                }
+                
+                showStatus(errorMessage, 'error');
+            }
+        });
+        
+        // 撮影・送信処理
+        captureBtn.addEventListener('click', async () => {
+            try {
+                showStatus('📸 撮影中...', 'info');
+                
+                // キャンバスに現在のフレームを描画
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(video, 0, 0);
+                
+                // 画像をBase64に変換
+                const imageData = canvas.toDataURL('image/jpeg', 0.8);
+                const timestamp = new Date().toISOString();
+                
+                // プレビュー表示
+                result.innerHTML = `
+                    <h3>📸 撮影完了</h3>
+                    <p><strong>撮影時刻:</strong> ${new Date().toLocaleString('ja-JP')}</p>
+                    <img src="${imageData}" class="preview-image" alt="撮影画像">
+                `;
+                
+                // GASへの送信
+                showStatus('📤 GASへ送信中...', 'info');
+                
+                const response = await fetch(GAS_API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'text/plain', // CORS制限回避
+                    },
+                    body: JSON.stringify({
+                        image: imageData,
+                        timestamp: timestamp,
+                        userAgent: navigator.userAgent
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const responseData = await response.json();
+                
+                if (responseData.success) {
+                    showStatus('✅ 送信完了！Googleドライブに保存されました', 'success');
+                    
+                    // GAS応答の詳細表示
+                    result.innerHTML += `
+                        <div class="gas-response">
+                            <strong>📁 GAS応答詳細:</strong>
+                            ファイル名: ${responseData.fileName}
+                            保存時刻: ${new Date(responseData.timestamp).toLocaleString('ja-JP')}
+                            ファイルURL: ${responseData.fileUrl}
+                        </div>
+                    `;
+                } else {
+                    throw new Error(responseData.message || 'GAS側でエラーが発生しました');
+                }
+                
+            } catch (error) {
+                console.error('Upload error:', error);
+                showStatus(`❌ 送信エラー: ${error.message}`, 'error');
+                
+                // エラー詳細の表示
+                result.innerHTML += `
+                    <div style="background: #ffebee; padding: 15px; border-radius: 8px; margin-top: 15px; border-left: 4px solid #d32f2f;">
+                        <strong>エラー詳細:</strong><br>
+                        ${error.message}<br>
+                        <small>開発者ツール（F12）のコンソールで詳細を確認できます</small>
+                    </div>
+                `;
+            }
+        });
+        
+        // カメラ停止
+        stopBtn.addEventListener('click', () => {
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+                video.srcObject = null;
+                currentStream = null;
+                
+                // ボタン状態のリセット
+                startBtn.disabled = false;
+                captureBtn.disabled = true;
+                stopBtn.disabled = true;
+                
+                showStatus('🔴 カメラを停止しました', 'info');
+            }
+        });
+        
+        // ページ離脱時のクリーンアップ
+        window.addEventListener('beforeunload', () => {
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+            }
+        });
+        
+        // 初期化完了の表示
+        document.addEventListener('DOMContentLoaded', () => {
+            showStatus('準備完了：カメラ起動ボタンを押してください', 'info');
+        });
+    </script>
+</body>
+</html>
