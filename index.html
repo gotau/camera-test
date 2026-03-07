@@ -149,7 +149,7 @@ header {
   <div class="badge off" id="badge">カメラ起動中...</div>
 
   <div class="url-box">
-    <input type="url" id="gas-url" placeholder="スプシ WebApp URL">
+    <input type="url" id="gas-url" placeholder="https://script.google.com/macros/s/AKfycbzIw4b8_A6QSZgi_jr8GDKIRQc1nNozci9sM-iZk0gvDv4hfdAdKVXlzYsI5CUoaHza/exec">
   </div>
 
   <div class="btn-row">
@@ -180,7 +180,7 @@ let stream   = null;
 let scanning = false;
 let rafId    = null;
 
-const URL_KEY = 'https://script.google.com/macros/s/AKfycbzIw4b8_A6QSZgi_jr8GDKIRQc1nNozci9sM-iZk0gvDv4hfdAdKVXlzYsI5CUoaHza/exec';
+const URL_KEY = 'jahis_qr_url';
 gasUrl.value = localStorage.getItem(URL_KEY) || '';
 
 // ---- Camera ----
