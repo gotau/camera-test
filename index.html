@@ -1,157 +1,296 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>QR 蓄積くん</title>
-    <style>
-        :root { --primary: #6366f1; --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%); --text: #f8fafc; }
-        * { box-sizing: border-box; margin: 0; padding: 0; touch-action: manipulation; }
-        body { background: var(--bg-gradient); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; font-family: sans-serif; }
-        .container { width: 100%; max-width: 500px; background: rgba(255,255,255,0.05); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1); border-radius: 24px; padding: 30px; text-align: center; }
-        #reader-wrapper { width: 100%; border-radius: 16px; overflow: hidden; margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.2); background: #000; position: relative; }
-        video { width: 100%; display: block; object-fit: cover; }
-        .result-container { display: none; margin-top: 20px; animation: fadeIn 0.3s; }
-        .button-group { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-        button { padding: 16px; border-radius: 12px; border: none; font-weight: 600; cursor: pointer; transition: 0.2s; }
-        .btn-primary { background: var(--primary); color: white; }
-        .btn-secondary { background: rgba(255,255,255,0.1); color: #f8fafc; border: 1px solid rgba(255,255,255,0.1); }
-        .status { margin-top: 20px; color: #818cf8; min-height: 1.5rem; font-size: 0.9rem; white-space: pre-wrap; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>処方箋QRリーダー</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+  background: #f0f4f8;
+  color: #1e293b;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+header {
+  width: 100%;
+  background: #2563eb;
+  color: #fff;
+  padding: 14px 20px;
+  text-align: center;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.container {
+  width: 100%;
+  max-width: 500px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.camera-box {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4/3;
+  background: #000;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+#video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.scan-line {
+  position: absolute;
+  top: 10%;
+  left: 5%;
+  right: 5%;
+  height: 3px;
+  background: #22c55e;
+  box-shadow: 0 0 10px #22c55e;
+  animation: scan 2s ease-in-out infinite;
+  pointer-events: none;
+  display: none;
+}
+
+@keyframes scan {
+  0%   { top: 10%; }
+  50%  { top: 85%; }
+  100% { top: 10%; }
+}
+
+.badge {
+  text-align: center;
+  padding: 10px 16px;
+  border-radius: 99px;
+  font-size: .88rem;
+  font-weight: 600;
+}
+.badge.scanning { background: #dcfce7; color: #166534; }
+.badge.ok       { background: #dbeafe; color: #1e40af; }
+.badge.sent     { background: #d1fae5; color: #065f46; }
+.badge.off      { background: #f1f5f9; color: #64748b; }
+.badge.error    { background: #fee2e2; color: #991b1b; }
+
+.btn-row {
+  display: flex;
+  gap: 10px;
+}
+
+.btn {
+  flex: 1;
+  padding: 14px;
+  border: none;
+  border-radius: 10px;
+  font-size: .95rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: .15s;
+}
+.btn:active { transform: scale(.97); }
+.btn:disabled { opacity: .35; cursor: not-allowed; transform: none; }
+.btn-green  { background: #16a34a; color: #fff; }
+.btn-red    { background: #dc2626; color: #fff; }
+
+.url-box {
+  display: flex;
+  gap: 8px;
+}
+.url-box input {
+  flex: 1;
+  padding: 12px;
+  border: 2px solid #e2e8f0;
+  border-radius: 10px;
+  font-size: .88rem;
+  outline: none;
+}
+.url-box input:focus { border-color: #2563eb; }
+
+.log {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 12px;
+  font-size: .78rem;
+  font-family: monospace;
+  max-height: 30vh;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.6;
+  display: none;
+}
+
+#scan-canvas { display: none; }
+</style>
 </head>
 <body>
-    <div class="container">
-        <h1 style="margin-bottom:20px;">QR 蓄積くん</h1>
-        
-        <div id="reader-wrapper">
-            <video id="qr-video" playsinline></video>
-        </div>
-        
-        <div id="result-container" class="result-container">
-            <div style="text-align:left; background:rgba(255,255,255,0.05); padding:15px; border-radius:12px; margin-bottom:20px;">
-                <p id="qr-result" style="word-break:break-all; min-height: 40px; font-size: 0.9em;"></p>
-            </div>
-            <div class="button-group">
-                <button id="send-btn" class="btn-primary">スプシに送る</button>
-                <button id="cancel-btn" class="btn-secondary">やり直し</button>
-            </div>
-        </div>
-        <div id="status-msg" class="status">準備中...</div>
-    </div>
 
-    <script>
-        const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzIw4b8_A6QSZgi_jr8GDKIRQc1nNozci9sM-iZk0gvDv4hfdAdKVXlzYsI5CUoaHza/exec"; // ← ここ絶対に書き換えてください！
-        
-        let currentStream = null;
-        let requestAnimationFrameId = null;
-        let lastScannedData = "";
-        let barcodeDetector = null;
+<header>処方箋QRリーダー</header>
 
-        const video = document.getElementById('qr-video');
-        const statusMsg = document.getElementById('status-msg');
-        const readerWrapper = document.getElementById('reader-wrapper');
-        const resultContainer = document.getElementById('result-container');
-        const qrResult = document.getElementById('qr-result');
+<div class="container">
+  <div class="camera-box">
+    <video id="video" autoplay playsinline muted></video>
+    <div class="scan-line" id="scan-line"></div>
+  </div>
 
-        // ネイティブAPIのチェック
-        if (!('BarcodeDetector' in window)) {
-            statusMsg.textContent = "お使いのブラウザは最新のQRスキャンAPIに未対応です。iOS SafariかAndroid Chromeをご利用ください。";
-        } else {
-            barcodeDetector = new BarcodeDetector({ formats: ['qr_code'] });
-        }
+  <div class="badge off" id="badge">カメラ起動中...</div>
 
-        async function startScanner() {
-            if (!barcodeDetector) return;
-            
-            statusMsg.textContent = "カメラ起動中...";
-            readerWrapper.style.display = 'block';
-            resultContainer.style.display = 'none';
+  <div class="url-box">
+    <input type="url" id="gas-url" placeholder="スプシ WebApp URL">
+  </div>
 
-            try {
-                currentStream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: "environment" }
-                });
-                video.srcObject = currentStream;
-                video.play();
-                
-                // 動画再生開始後にスキャンループ開始
-                video.onloadedmetadata = () => {
-                    requestAnimationFrameId = requestAnimationFrame(scanQRCode);
-                };
-                statusMsg.textContent = "処方箋QRをスキャンしてください";
-            } catch (err) {
-                statusMsg.textContent = "起動エラー: カメラの権限を許可してください。";
-            }
-        }
+  <div class="btn-row">
+    <button class="btn btn-green" id="btn-next" disabled>🔄 次を撮影</button>
+    <button class="btn btn-red" id="btn-stop" disabled>⏹ カメラ停止</button>
+  </div>
 
-        function stopScanner() {
-            if (requestAnimationFrameId) cancelAnimationFrame(requestAnimationFrameId);
-            if (currentStream) {
-                currentStream.getTracks().forEach(track => track.stop());
-                currentStream = null;
-            }
-        }
+  <div class="log" id="log"></div>
+</div>
 
-        async function scanQRCode() {
-            if (video.readyState === video.HAVE_ENOUGH_DATA) {
-                try {
-                    // OS内蔵の最強エンジンで動画フレームを直接解析
-                    const barcodes = await barcodeDetector.detect(video);
-                    
-                    if (barcodes.length > 0) {
-                        const code = barcodes[0];
-                        stopScanner();
-                        
-                        // OSが完璧にデコードしてくれた文字列
-                        lastScannedData = code.rawValue; 
-                        
-                        qrResult.textContent = lastScannedData.substring(0, 100) + (lastScannedData.length > 100 ? "...\n(以下略)" : "");
-                        readerWrapper.style.display = 'none';
-                        resultContainer.style.display = 'block';
-                        statusMsg.textContent = "スキャン完了！内容を確認してください";
-                        return;
-                    }
-                } catch (e) {
-                    console.error("スキャン処理エラー:", e);
-                }
-            }
-            requestAnimationFrameId = requestAnimationFrame(scanQRCode);
-        }
+<canvas id="scan-canvas"></canvas>
 
-        document.getElementById('send-btn').addEventListener('click', async () => {
-            const btn = document.getElementById('send-btn');
-            btn.disabled = true;
-            statusMsg.textContent = "送信中...";
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+<script>
+'use strict';
 
-            try {
-                await fetch(GAS_WEB_APP_URL, {
-                    method: "POST",
-                    mode: "no-cors",
-                    headers: { "Content-Type": "text/plain" },
-                    body: JSON.stringify({
-                        data: lastScannedData, 
-                        timestamp: new Date().toLocaleString('ja-JP')
-                    })
-                });
+const video     = document.getElementById('video');
+const scanLine  = document.getElementById('scan-line');
+const badge     = document.getElementById('badge');
+const gasUrl    = document.getElementById('gas-url');
+const btnNext   = document.getElementById('btn-next');
+const btnStop   = document.getElementById('btn-stop');
+const logEl     = document.getElementById('log');
+const scanCvs   = document.getElementById('scan-canvas');
+const scanCtx   = scanCvs.getContext('2d', { willReadFrequently: true });
 
-                statusMsg.textContent = "✅ 送信完了！";
-                setTimeout(() => {
-                    btn.disabled = false;
-                    startScanner();
-                }, 1500);
+let stream   = null;
+let scanning = false;
+let rafId    = null;
 
-            } catch (e) {
-                statusMsg.textContent = "送信失敗: " + e;
-                btn.disabled = false;
-            }
-        });
+const URL_KEY = 'https://script.google.com/macros/s/AKfycbzIw4b8_A6QSZgi_jr8GDKIRQc1nNozci9sM-iZk0gvDv4hfdAdKVXlzYsI5CUoaHza/exec';
+gasUrl.value = localStorage.getItem(URL_KEY) || '';
 
-        document.getElementById('cancel-btn').addEventListener('click', () => {
-            startScanner();
-        });
+// ---- Camera ----
+async function startCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 960 } },
+      audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+    scanning = true;
+    scanLine.style.display = 'block';
+    setBadge('scanning', 'スキャン中… QRをかざしてください');
+    btnNext.disabled = true;
+    btnStop.disabled = false;
+    logEl.style.display = 'none';
+    rafId = requestAnimationFrame(loop);
+  } catch (e) {
+    setBadge('error', 'カメラ起動失敗: ' + e.message);
+  }
+}
 
-        window.addEventListener('load', startScanner);
-    </script>
+function stopCamera() {
+  scanning = false;
+  if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  video.srcObject = null;
+  scanLine.style.display = 'none';
+  btnStop.disabled = true;
+  setBadge('off', 'カメラ停止中');
+  btnNext.textContent = '📸 カメラ起動';
+  btnNext.disabled = false;
+}
+
+// ---- Scan loop ----
+function loop() {
+  if (!scanning) return;
+  if (video.readyState >= video.HAVE_ENOUGH_DATA) {
+    const w = video.videoWidth;
+    const h = video.videoHeight;
+    scanCvs.width = w;
+    scanCvs.height = h;
+    scanCtx.drawImage(video, 0, 0, w, h);
+    const img = scanCtx.getImageData(0, 0, w, h);
+    const code = jsQR(img.data, w, h, { inversionAttempts: 'dontInvert' });
+    if (code) {
+      onDetected(code);
+      return;
+    }
+  }
+  rafId = requestAnimationFrame(loop);
+}
+
+// ---- Detected ----
+function onDetected(code) {
+  scanning = false;
+  scanLine.style.display = 'none';
+
+  let csv;
+  try {
+    csv = new TextDecoder('shift_jis').decode(new Uint8Array(code.binaryData));
+  } catch (_) {
+    csv = code.data;
+  }
+
+  logEl.textContent = csv;
+  logEl.style.display = 'block';
+  setBadge('ok', '✅ QR読み取り完了！');
+  btnNext.textContent = '🔄 次を撮影';
+  btnNext.disabled = false;
+
+  sendToSheet(csv);
+}
+
+// ---- Send ----
+async function sendToSheet(csv) {
+  const url = gasUrl.value.trim();
+  if (!url) {
+    setBadge('error', '⚠ WebApp URL が未入力です');
+    return;
+  }
+  localStorage.setItem(URL_KEY, url);
+  setBadge('ok', '📡 送信中...');
+
+  try {
+    const params = new URLSearchParams({ data: csv });
+    await fetch(url + '?' + params.toString(), { mode: 'no-cors' });
+    setBadge('sent', '🎉 送信完了！スプシに書き込みました');
+  } catch (e) {
+    setBadge('error', '❌ 送信失敗: ' + e.message);
+  }
+}
+
+// ---- UI helpers ----
+function setBadge(type, msg) {
+  badge.className = 'badge ' + type;
+  badge.textContent = msg;
+}
+
+// ---- Buttons ----
+btnNext.addEventListener('click', () => {
+  if (stream) stopCamera();
+  startCamera();
+});
+
+btnStop.addEventListener('click', stopCamera);
+
+// ---- Boot ----
+startCamera();
+</script>
 </body>
 </html>
