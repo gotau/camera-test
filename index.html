@@ -3,17 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>QR 蓄積くん - JAHISプロ仕様版</title>
-    <!-- html5-qrcodeの代わりに、生データが抜けるjsQRを使用します -->
-    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+    <title>QR 蓄積くん</title>
     <style>
         :root { --primary: #6366f1; --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%); --text: #f8fafc; }
         * { box-sizing: border-box; margin: 0; padding: 0; touch-action: manipulation; }
         body { background: var(--bg-gradient); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; font-family: sans-serif; }
         .container { width: 100%; max-width: 500px; background: rgba(255,255,255,0.05); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1); border-radius: 24px; padding: 30px; text-align: center; }
         #reader-wrapper { width: 100%; border-radius: 16px; overflow: hidden; margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.2); background: #000; position: relative; }
-        video { width: 100%; display: block; }
-        canvas { display: none; }
+        video { width: 100%; display: block; object-fit: cover; }
         .result-container { display: none; margin-top: 20px; animation: fadeIn 0.3s; }
         .button-group { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
         button { padding: 16px; border-radius: 12px; border: none; font-weight: 600; cursor: pointer; transition: 0.2s; }
@@ -30,7 +27,6 @@
         <div id="reader-wrapper">
             <video id="qr-video" playsinline></video>
         </div>
-        <canvas id="qr-canvas"></canvas>
         
         <div id="result-container" class="result-container">
             <div style="text-align:left; background:rgba(255,255,255,0.05); padding:15px; border-radius:12px; margin-bottom:20px;">
@@ -45,22 +41,29 @@
     </div>
 
     <script>
-        const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzIw4b8_A6QSZgi_jr8GDKIRQc1nNozci9sM-iZk0gvDv4hfdAdKVXlzYsI5CUoaHza/exec"; // ← ここに必ずGASのURLを入れてください！
+        const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzIw4b8_A6QSZgi_jr8GDKIRQc1nNozci9sM-iZk0gvDv4hfdAdKVXlzYsI5CUoaHza/exec"; // ← ここ絶対に書き換えてください！
         
         let currentStream = null;
         let requestAnimationFrameId = null;
         let lastScannedData = "";
+        let barcodeDetector = null;
 
         const video = document.getElementById('qr-video');
-        const canvas = document.getElementById('qr-canvas');
-        const ctx = canvas.getContext('2d');
         const statusMsg = document.getElementById('status-msg');
         const readerWrapper = document.getElementById('reader-wrapper');
         const resultContainer = document.getElementById('result-container');
         const qrResult = document.getElementById('qr-result');
 
-        // カメラ起動
+        // ネイティブAPIのチェック
+        if (!('BarcodeDetector' in window)) {
+            statusMsg.textContent = "お使いのブラウザは最新のQRスキャンAPIに未対応です。iOS SafariかAndroid Chromeをご利用ください。";
+        } else {
+            barcodeDetector = new BarcodeDetector({ formats: ['qr_code'] });
+        }
+
         async function startScanner() {
+            if (!barcodeDetector) return;
+            
             statusMsg.textContent = "カメラ起動中...";
             readerWrapper.style.display = 'block';
             resultContainer.style.display = 'none';
@@ -71,14 +74,17 @@
                 });
                 video.srcObject = currentStream;
                 video.play();
-                requestAnimationFrameId = requestAnimationFrame(scanQRCode);
+                
+                // 動画再生開始後にスキャンループ開始
+                video.onloadedmetadata = () => {
+                    requestAnimationFrameId = requestAnimationFrame(scanQRCode);
+                };
                 statusMsg.textContent = "処方箋QRをスキャンしてください";
             } catch (err) {
                 statusMsg.textContent = "起動エラー: カメラの権限を許可してください。";
             }
         }
 
-        // カメラ停止
         function stopScanner() {
             if (requestAnimationFrameId) cancelAnimationFrame(requestAnimationFrameId);
             if (currentStream) {
@@ -87,63 +93,44 @@
             }
         }
 
-        // スキャン処理（Shift_JIS対応エンジン）
-        function scanQRCode() {
+        async function scanQRCode() {
             if (video.readyState === video.HAVE_ENOUGH_DATA) {
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                
-                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                const code = jsQR(imageData.data, imageData.width, imageData.height, {
-                    inversionAttempts: "dontInvert",
-                });
-
-                if (code) {
-                    stopScanner();
+                try {
+                    // OS内蔵の最強エンジンで動画フレームを直接解析
+                    const barcodes = await barcodeDetector.detect(video);
                     
-                    let decodedText = "";
-                    try {
-                        // JAHISのShift_JISを強制デコード
-                        if (code.binaryData && code.binaryData.length > 0) {
-                            const uint8Array = new Uint8Array(code.binaryData);
-                            const decoder = new TextDecoder('shift-jis');
-                            decodedText = decoder.decode(uint8Array);
-                        }
-                    } catch (e) {
-                        console.error("デコードエラー", e);
+                    if (barcodes.length > 0) {
+                        const code = barcodes[0];
+                        stopScanner();
+                        
+                        // OSが完璧にデコードしてくれた文字列
+                        lastScannedData = code.rawValue; 
+                        
+                        qrResult.textContent = lastScannedData.substring(0, 100) + (lastScannedData.length > 100 ? "...\n(以下略)" : "");
+                        readerWrapper.style.display = 'none';
+                        resultContainer.style.display = 'block';
+                        statusMsg.textContent = "スキャン完了！内容を確認してください";
+                        return;
                     }
-                    
-                    // 失敗した場合は通常のデータを使用
-                    if (!decodedText) decodedText = code.data;
-
-                    lastScannedData = decodedText;
-                    
-                    // UI切り替え
-                    qrResult.textContent = decodedText.substring(0, 100) + (decodedText.length > 100 ? "..." : ""); // 長すぎるので省略表示
-                    readerWrapper.style.display = 'none';
-                    resultContainer.style.display = 'block';
-                    statusMsg.textContent = "スキャン完了！内容を確認してください";
-                    return;
+                } catch (e) {
+                    console.error("スキャン処理エラー:", e);
                 }
             }
             requestAnimationFrameId = requestAnimationFrame(scanQRCode);
         }
 
-        // 送信ボタンの処理
         document.getElementById('send-btn').addEventListener('click', async () => {
             const btn = document.getElementById('send-btn');
             btn.disabled = true;
             statusMsg.textContent = "送信中...";
 
             try {
-                // ごーさんの元の通信方式（no-cors）を採用
                 await fetch(GAS_WEB_APP_URL, {
                     method: "POST",
                     mode: "no-cors",
                     headers: { "Content-Type": "text/plain" },
                     body: JSON.stringify({
-                        data: lastScannedData, // GAS側の requestData.data で受け取れます
+                        data: lastScannedData, 
                         timestamp: new Date().toLocaleString('ja-JP')
                     })
                 });
@@ -160,12 +147,10 @@
             }
         });
 
-        // やり直しボタン
         document.getElementById('cancel-btn').addEventListener('click', () => {
             startScanner();
         });
 
-        // ページ読み込み時に起動
         window.addEventListener('load', startScanner);
     </script>
 </body>
