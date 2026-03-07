@@ -213,10 +213,15 @@ function onDetected(code) {
   sendToSheet(csv);
 }
 
+// ★ GASの doPost に合わせて POST + JSON で送信 ★
 async function sendToSheet(csv) {
   try {
-    const params = new URLSearchParams({ data: csv });
-    await fetch(GAS_URL + '?' + params.toString(), { mode: 'no-cors' });
+    await fetch(GAS_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ qrData: csv })
+    });
     setBadge('sent', '🎉 送信完了！');
   } catch (e) {
     setBadge('error', '❌ 送信に失敗しました');
