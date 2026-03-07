@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QR Scanner</title>
+    <title>QR Scanner (JAHIS対応版)</title>
     <!-- jsQRライブラリの読み込み -->
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
     <style>
@@ -23,7 +23,7 @@
             border-radius: 8px;
             overflow: hidden;
             background-color: #000;
-            display: none; /* 初期状態は非表示 */
+            display: none;
         }
         video {
             width: 100%;
@@ -31,7 +31,7 @@
             display: block;
         }
         canvas {
-            display: none; /* 解析用のキャンバスは隠しておく */
+            display: none;
         }
         .btn {
             padding: 12px 24px;
@@ -57,21 +57,20 @@
             font-weight: bold;
             color: #333;
             min-height: 24px;
+            white-space: pre-wrap; /* 改行を正しく表示するため */
         }
     </style>
 </head>
 <body>
 
-    <h1>QR Scanner</h1>
+    <h1>処方箋QR Scanner</h1>
     
     <div id="status-message">「カメラを起動」ボタンを押してください</div>
 
     <div id="video-container">
-        <!-- playsinlineはiOS Safariでの全画面化を防ぐために必須です -->
         <video id="qr-video" playsinline></video>
     </div>
     
-    <!-- 画像データを抽出するためのキャンバス -->
     <canvas id="qr-canvas"></canvas>
 
     <div>
@@ -80,8 +79,9 @@
     </div>
 
     <script>
-        // GASのWebアプリURLをここに設定します
+        // ごーさんのGAS WebアプリURL
         const GAS_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzIw4b8_A6QSZgi_jr8GDKIRQc1nNozci9sM-iZk0gvDv4hfdAdKVXlzYsI5CUoaHza/exec';
+                            
         
         let currentStream = null;
         let requestAnimationFrameId = null;
@@ -93,26 +93,21 @@
         const startBtn = document.getElementById('start-btn');
         const rescanBtn = document.getElementById('rescan-btn');
 
-        // カメラを起動する処理を行う関数です
         async function startCamera() {
-            // UIの状態をリセットします
             statusMessage.innerText = "カメラを起動中...";
             startBtn.style.display = "none";
             rescanBtn.style.display = "none";
             videoContainer.style.display = "block";
 
             try {
-                // 背面カメラ（アウトカメラ）を優先して要求します
                 currentStream = await navigator.mediaDevices.getUserMedia({
                     video: { facingMode: "environment" }
                 });
                 
                 video.srcObject = currentStream;
                 video.play();
-                
-                // 動画の再生準備が整ったらスキャンループを開始します
                 requestAnimationFrameId = requestAnimationFrame(scanQRCode);
-                statusMessage.innerText = "QRコードをカメラにかざしてください";
+                statusMessage.innerText = "処方箋のQRコードをカメラにかざしてください";
             } catch (err) {
                 console.error("カメラの起動エラー:", err);
                 statusMessage.innerText = "カメラの起動に失敗しました。権限を確認してください。";
@@ -121,27 +116,20 @@
             }
         }
 
-        // カメラを完全に停止し、リソースを解放する関数です
         function stopCamera() {
-            // アニメーションフレームのループをキャンセルします
             if (requestAnimationFrameId) {
                 cancelAnimationFrame(requestAnimationFrameId);
                 requestAnimationFrameId = null;
             }
-            // ストリームのトラックをすべて停止してカメラのランプを消します
             if (currentStream) {
-                currentStream.getTracks().forEach(track => {
-                    track.stop();
-                });
+                currentStream.getTracks().forEach(track => track.stop());
                 currentStream = null;
             }
             video.srcObject = null;
             videoContainer.style.display = "none";
         }
 
-        // ビデオフレームごとにQRコードを解析する関数です
         function scanQRCode() {
-            // 動画の準備ができていればキャンバスに描画して解析します
             if (video.readyState === video.HAVE_ENOUGH_DATA) {
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
@@ -153,27 +141,40 @@
                 });
 
                 if (code) {
-                    // QRコードを検出した直後にカメラを停止します
                     stopCamera();
-                    const qrText = code.data;
-                    statusMessage.innerText = `検出完了: ${qrText}\nデータ送信中...`;
                     
-                    // GASへの送信処理を呼び出します
+                    let qrText = "";
+                    try {
+                        // JAHIS規格（Shift_JIS）を強制的にデコードする理屈の核心部分
+                        if (code.binaryData && code.binaryData.length > 0) {
+                            const uint8Array = new Uint8Array(code.binaryData);
+                            const decoder = new TextDecoder('shift-jis');
+                            qrText = decoder.decode(uint8Array);
+                        }
+                    } catch (e) {
+                        console.error("Shift_JISデコードエラー:", e);
+                    }
+
+                    // デコード失敗時や空文字の場合は元のjsQRの解読結果をフォールバックとして使う
+                    if (!qrText) {
+                        qrText = code.data;
+                    }
+
+                    statusMessage.innerText = `検出完了！データ送信中...\n（先頭の文字: ${qrText.substring(0, 15)}...）`;
+                    
                     sendDataToGAS(qrText);
-                    return; // スキャンループを終了します
+                    return; 
                 }
             }
-            // 検出されなかった場合は次のフレームで再度実行します
             requestAnimationFrameId = requestAnimationFrame(scanQRCode);
         }
 
-        // 検出したデータをGASに送信する関数です
         async function sendDataToGAS(qrData) {
             try {
                 const response = await fetch(GAS_WEBAPP_URL, {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'text/plain', // GASのCORS制約を回避するためにtext/plainを使用します
+                        'Content-Type': 'text/plain',
                     },
                     body: JSON.stringify({ qrData: qrData })
                 });
@@ -181,16 +182,15 @@
                 const result = await response.json();
                 
                 if (result.success) {
-                    statusMessage.innerText = `送信成功！\n記録データ: ${qrData}`;
+                    statusMessage.innerText = `スプシへの送信成功！\n書き込み行: ${result.rowNumber}行目`;
                 } else {
-                    statusMessage.innerText = `エラー: ${result.message}`;
+                    statusMessage.innerText = `GASエラー: ${result.message}`;
                     console.error("GASエラー詳細:", result);
                 }
             } catch (error) {
                 console.error('通信エラー:', error);
                 statusMessage.innerText = "通信エラーが発生しました。ネットワークを確認してください。";
             } finally {
-                // 送信処理が完了したら「再度スキャン」ボタンを表示します
                 rescanBtn.style.display = "inline-block";
             }
         }
